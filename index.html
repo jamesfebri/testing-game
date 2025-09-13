@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Catch the Fruits - Simple Game</title>
+  <style>
+    body { margin:0; font-family:Arial; background:#222; color:#fff; display:flex; align-items:center; justify-content:center; height:100vh; }
+    canvas { background: linear-gradient(#87CEEB, #ffffff); display:block; border-radius:10px; box-shadow:0 6px 20px rgba(0,0,0,0.5); }
+    #ui { position:fixed; top:12px; left:12px; font-weight:600; }
+    #controls { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); display:flex; gap:10px; }
+    .btn { padding:10px 14px; background:#fff1; border-radius:8px; color:#fff; user-select:none; }
+  </style>
+</head>
+<body>
+  <div id="ui">Score: <span id="score">0</span> &nbsp; Lives: <span id="lives">3</span></div>
+  <canvas id="game" width="420" height="640"></canvas>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const livesEl = document.getElementById('lives');
+
+    const W = canvas.width, H = canvas.height;
+
+    // Player
+    const player = {
+      x: W/2 - 40,
+      y: H - 60,
+      w: 80,
+      h: 24,
+      speed: 6,
+      vx: 0
+    };
+
+    // Fruits array
+    const fruits = [];
+    let spawnTimer = 0;
+    let spawnInterval = 60; // frames
+    let score = 0;
+    let lives = 3;
+    let gameOver = false;
+
+    // Touch control helpers
+    let touchX = null;
+
+    // Create random fruit
+    function spawnFruit() {
+      const size = 22 + Math.random()*18;
+      fruits.push({
+        x: Math.random() * (W - size),
+        y: -size,
+        w: size,
+        h: size,
+        vy: 2 + Math.random()*2.5,
+        color: randomFruitColor()
+      });
+    }
+
+    function randomFruitColor() {
+      const colors = ['#FF4C4C','#FFB84C','#FFD24C','#8DE36F','#FF6BB5','#8CC8FF'];
+      return colors[Math.floor(Math.random()*colors.length)];
+    }
+
+    // Update game state
+    function update() {
+      if (gameOver) return;
+
+      // Spawn fruits
+      spawnTimer++;
+      if (spawnTimer >= spawnInterval) {
+        spawnTimer = 0;
+        spawnInterval = Math.max(20, 60 - Math.floor(score/5)); // faster with higher score
+        spawnFruit();
+      }
+
+      // Player movement - keyboard or touch
+      // If touchX set, move towards it
+      if (touchX !== null) {
+        const targetX = touchX - player.w/2;
+        const diff = targetX - player.x;
+        player.vx = Math.sign(diff) * Math.min(player.speed, Math.abs(diff));
+      }
+      player.x += player.vx;
+      // friction when no input
+      player.vx *= 0.9;
+
+      // Bound player
+      if (player.x < 0) player.x = 0;
+      if (player.x + player.w > W) player.x = W - player.w;
+
+      // Update fruits
+      for (let i = fruits.length - 1; i >= 0; i--) {
+        const f = fruits[i];
+        f.y += f.vy;
+
+        // Check catch
+        if (rectIntersect(f, player)) {
+          fruits.splice(i,1);
+          score += 1;
+          scoreEl.textContent = score;
+          continue;
+        }
+
+        // Missed (fell off)
+        if (f.y > H + 40) {
+          fruits.splice(i,1);
+          lives -= 1;
+          livesEl.textContent = lives;
+          if (lives <= 0) {
+            gameOver = true;
+            setTimeout(()=> drawGameOver(), 150);
+          }
+        }
+      }
+    }
+
+    function rectIntersect(a,b){
+      return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    }
+
+    // Draw everything
+    function draw() {
+      // Background
+      ctx.clearRect(0,0,W,H);
+
+      // Sky gradient (canvas background already set in CSS but redraw for safety)
+      const grad = ctx.createLinearGradient(0,0,0,H);
+      grad.addColorStop(0,'#87CEEB');
+      grad.addColorStop(1,'#ffffff');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0,0,W,H);
+
+      // Draw fruits
+      for (const f of fruits) {
+        drawFruit(f);
+      }
+
+      // Draw player (basket)
+      drawBasket(player.x, player.y, player.w, player.h);
+
+      // HUD drawn via DOM, but we can draw small tip
+      ctx.fillStyle = "rgba(0,0,0,0.1)";
+      ctx.font = "12px Arial";
+      ctx.fillText("Move: touch layar / panah kiri kanan", 8, H - 6);
+    }
+
+    function drawFruit(f){
+      // simple circle fruit
+      ctx.beginPath();
+      ctx.fillStyle = f.color;
+      ctx.ellipse(f.x + f.w/2, f.y + f.h/2, f.w/2, f.h/2, 0, 0, Math.PI*2);
+      ctx.fill();
+      // leaf
+      ctx.fillStyle = "#2a8b2a";
+      ctx.beginPath();
+      ctx.ellipse(f.x + f.w/2 + f.w*0.28, f.y + f.h*0.12, f.w*0.14, f.h*0.08, -0.6, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    function drawBasket(x,y,w,h){
+      // basket base
+      ctx.fillStyle = "#6b3e16";
+      ctx.fillRect(x, y, w, h);
+      // basket rim
+      ctx.fillStyle = "#8b5a2b";
+      ctx.fillRect(x, y-8, w, 8);
+      // stripes
+      ctx.fillStyle = "rgba(0,0,0,0.06)";
+      for (let i=0;i<4;i++){
+        ctx.fillRect(x + i*(w/4), y, 2, h);
+      }
+    }
+
+    function drawGameOver(){
+      // overlay
+      ctx.fillStyle = "rgba(0,0,0,0.6)";
+      ctx.fillRect(0,0,W,H);
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 36px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText("Game Over", W/2, H/2 - 20);
+      ctx.font = "20px Arial";
+      ctx.fillText("Score: " + score, W/2, H/2 + 14);
+      ctx.font = "14px Arial";
+      ctx.fillText("Refresh halaman untuk main lagi", W/2, H/2 + 44);
+      ctx.textAlign = "start";
+    }
+
+    // Game loop
+    function loop(){
+      update();
+      draw();
+      if (!gameOver) requestAnimationFrame(loop);
+    }
+    loop();
+
+    // Controls: keyboard
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft') player.vx = -player.speed;
+      if (e.key === 'ArrowRight') player.vx = player.speed;
+    });
+
+    // Touch / mouse controls (for mobile)
+    canvas.addEventListener('touchstart', (e) => {
+      const t = e.touches[0];
+      touchX = t.clientX - canvas.getBoundingClientRect().left;
+      e.preventDefault();
+    }, {passive:false});
+    canvas.addEventListener('touchmove', (e) => {
+      const t = e.touches[0];
+      touchX = t.clientX - canvas.getBoundingClientRect().left;
+      e.preventDefault();
+    }, {passive:false});
+    canvas.addEventListener('touchend', (e) => {
+      touchX = null;
+    });
+
+    // Also allow mouse (desktop)
+    canvas.addEventListener('mousedown', (e) => {
+      touchX = e.clientX - canvas.getBoundingClientRect().left;
+      canvas.addEventListener('mousemove', onMouseMove);
+    });
+    window.addEventListener('mouseup', () => {
+      touchX = null;
+      canvas.removeEventListener('mousemove', onMouseMove);
+    });
+    function onMouseMove(e){
+      touchX = e.clientX - canvas.getBoundingClientRect().left;
+    }
+
+    // Optional: restart by clicking when game over
+    canvas.addEventListener('click', () => {
+      if (gameOver) location.reload();
+    });
+  </script>
+</body>
+</html>
